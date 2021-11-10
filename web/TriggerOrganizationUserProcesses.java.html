@@ -1,0 +1,191 @@
+<html>
+    <head>
+        <meta name="Generator" content="Vim/7.0">
+        <meta http-equiv="content-type" content="text/html; charset=iso-8859-1">
+        <meta name="KEYWORDS" content="Oracle Identity Manager Event Handler Organization User Trigger Process Task" />
+        <meta name="robots" content="index,follow" />
+        <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <title>TriggerOrganizationUserProcesses.java - ZeroIn LLC</title>
+    </head>
+    <body>
+        <div id="header">
+            <h1>ZEROIN LLC</h1>
+        </div>
+        <ul id="nav-top">
+            <li id="n-mainpage">
+            <a href="index.html">Main Page</a></li>
+            <li id="n-Resume">
+            <a href="vinhant-resume.html">Resume</a></li>
+            <li id="n-articles">
+            <a href="idm-articles.html">IDM Articles</a>
+            <li id="n-Contact-Me">
+            <a href="vinhant-contact.html">Contact Me</a></li>
+        </ul>
+        <div id="content">
+            <div id="content-body">
+                <div id="articleBody">
+                    <div id="articleContent">
+                        <h1>TriggerOrganizationUserProcesses.java</h1>
+<pre>
+import com.thortech.xl.client.events.tcTriggerUserProcesses;
+import com.thortech.xl.dataaccess.tcDataSetException;
+import com.thortech.xl.dataobj.tcDataSet;
+<br>
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap
+import java.util.Properties;
+import java.util.Vector;
+<br>
+/**
+&nbsp;* Event handler to trigger User process task when the associated Organization is updated.
+&nbsp;*
+&nbsp;* Background:
+&nbsp;* &lt;p&gt;
+&nbsp;* OIM has two process triggers USR_PROCESS_TRIGGERS and ACT_PROCESS_TRIGGERS
+&nbsp;* that invokes a process task when a user attribute or an organization 
+&nbsp;* attribute is changed. 
+&nbsp;* &lt;p&gt;
+&nbsp;* For example if user's first name is updated, OIM can invoke
+&nbsp;* process task &quot;Change First Name&quot; on each of the user's resource.
+&nbsp;* &lt;p&gt;
+&nbsp;* Similarly OIM can invoke process task &quot;Change Organization Name&quot; on each
+&nbsp;* of the organization's resource when the name changes. 
+&nbsp;* &lt;p&gt;
+&nbsp;* However there is no process trigger to invoke a&nbsp;&nbsp; 
+&nbsp;* a _user_ process task when an _organization_ attribute changes.
+&nbsp;* Deploying this event handler will allow OIM to do this.
+&nbsp;* &lt;p&gt;
+&nbsp;*&nbsp;&nbsp;!! IMPORTANT !!
+&nbsp;* An Organization can have hundreds of users, 
+&nbsp;* and each users can have many resources.&nbsp;&nbsp;So thousands of 
+&nbsp;* process tasks might get triggered, potentially slowing down OIM to a crawl. 
+&nbsp;* &lt;p&gt;&nbsp;&nbsp;
+&nbsp;* To prevent that narrow down as much as possible the organization and
+&nbsp;* the users that can trigger the process tasks.
+&nbsp;* &lt;p&gt; 
+&nbsp;* In the implementation below, only organizations of type &quot;Location&quot; will
+&nbsp;* trigger the process tasks for users whose login start with &quot;LOCATION&quot;. 
+&nbsp;* &lt;p&gt; 
+&nbsp;* To deploy:
+&nbsp;* &lt;p&gt;
+&nbsp;* Review which organization and which users you want to trigger processes 
+&nbsp;* and update constants &lt;code&gt;ORGANIZATION_TYPE_FILTER&lt;/code&gt; and &lt;code&gt;USER_FILTER&lt;/code&gt; accordingly.
+&nbsp;* &lt;p&gt;
+&nbsp;* Create a lookup Lookup.ACT_USR_PROCESS_TRIGGERS and enter the organization
+&nbsp;* attributes and the process tasks to trigger 
+&nbsp;* (modeled on Lookup.USR_PROCESS_TRIGGERS and Lookup.ACT_PROCESS_TRIGGERS)
+&nbsp;* &lt;p&gt; 
+&nbsp;* Add a new event handler in Event Handler Manager.
+&nbsp;* &lt;p&gt;&nbsp;&nbsp; 
+&nbsp;* In Data Object Manager, find the Organization object.&nbsp;&nbsp;Add
+&nbsp;* the event handler created in previous step as a Post-Update. 
+&nbsp;* &lt;p&gt; 
+&nbsp;* Add process tasks in the desired process definition 
+&nbsp;* (e.g. in process AD User add task &quot;Change Organization Telephone&quot;)
+&nbsp;* &lt;p&gt;
+&nbsp;* Created 2010-04-09
+&nbsp;*
+&nbsp;* @author Vinh-An Trinh vinhant@zerointech.com
+&nbsp;*/
+public class TriggerOrganizationUserProcesses 
+&nbsp;&nbsp;&nbsp;&nbsp;extends tcTriggerUserProcesses {
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;// You can modify these constants
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;// Only organization of this type will trigger the user process tasks
+&nbsp;&nbsp;&nbsp;&nbsp;// in order to prevent firing too many process tasks
+&nbsp;&nbsp;&nbsp;&nbsp;// Modify the organization type according to your specifications
+&nbsp;&nbsp;&nbsp;&nbsp;final String ORGANIZATION_TYPE_FILTER = &quot;Location&quot;;
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;// Only users in this select query will trigger the users process tasks
+&nbsp;&nbsp;&nbsp;&nbsp;// in order to prevent firing too many process tasks
+&nbsp;&nbsp;&nbsp;&nbsp;// Modify the WHERE clause to your specifications
+&nbsp;&nbsp;&nbsp;&nbsp;final String USER_FILTER = &quot;SELECT usr_login, usr_key, act_key &quot; + 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;FROM usr &quot; + 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;WHERE usr_first_name = 'LOCATION'&quot;;
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;// Do not modify code below
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;// The Organization to User processes are stored in this lookup
+&nbsp;&nbsp;&nbsp;&nbsp;final String PROCESS_TRIGGERS_LOOKUP_NAME = 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;Lookup.ACT_USR_PROCESS_TRIGGERS&quot;;
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;private String isActKey = &quot;&quot;;
+&nbsp;&nbsp;&nbsp;&nbsp;private boolean ibCheckCancelled = true;
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;public TriggerOrganizationUserProcesses() {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;setEventName(&quot;TriggerOrganizationUserProcesses&quot;);
+&nbsp;&nbsp;&nbsp;&nbsp;}
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;protected void implementation() throws Exception {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;String newOrganizationType = getDataObject().getString(
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;ACT_CUST_TYPE&quot;);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (ORGANIZATION_TYPE_FILTER.equalsIgnoreCase(
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;newOrganizationType)) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;initActKey();
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Vector localVector = getMilNamesNeedTrigger(
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PROCESS_TRIGGERS_LOOKUP_NAME);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;for (int i = 0; i &lt; localVector.size(); ++i) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;String str = (String) localVector.elementAt(i);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;trigger(str, this.ibCheckCancelled, 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PROCESS_TRIGGERS_LOOKUP_NAME);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;}
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;private void initActKey() {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;this.isActKey = getDataObject().getString(&quot;act_key&quot;);
+&nbsp;&nbsp;&nbsp;&nbsp;}
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;protected void initOrcTosMap(boolean paramBoolean) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;int i;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;this.ioOrcTosMap = new HashMap();
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;try {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;String queryOrcTos = 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;SELECT usr_login, pkg_name, orc_key, tos_key &quot; + 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;FROM orc, pkg, (${trigger_process_users}) organization_users &quot; +
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;WHERE orc.pkg_key = pkg.pkg_key &quot; +
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;AND orc.usr_key = organization_users.usr_key &quot; + 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;AND orc.act_key = organization_users.act_key &quot; + 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;AND orc.act_key = ${isActKey} &quot; + 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;AND Nvl(pkg_system,0) &lt;&gt; 1 &quot;;
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (paramBoolean)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;queryOrcTos = queryOrcTos + &quot; and orc_status not in ('X', 'PX')&quot;;
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;queryOrcTos = queryOrcTos.replaceAll(
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&quot;\\$\\{trigger_process_users\\}&quot;, 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;USER_FILTER);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;queryOrcTos = queryOrcTos.replaceAll(&quot;\\$\\{isActKey\\}&quot;, isActKey);
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tcDataSet localtcDataSet = new tcDataSet();
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;localtcDataSet.setQuery(getDataBase(), queryOrcTos);
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;localtcDataSet.executeQuery();
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;for (i = 0; i &lt; localtcDataSet.getRowCount(); ++i) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;localtcDataSet.goToRow(i);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;String usr_login = localtcDataSet.getString(&quot;usr_login&quot;);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;String pkg_name = localtcDataSet.getString(&quot;pkg_name&quot;);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;String orc = localtcDataSet.getString(&quot;orc_key&quot;);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;String tos = localtcDataSet.getString(&quot;tos_key&quot;);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;System.out.println(&quot;Found user/process: &quot; + usr_login + &quot;/&quot; + 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;pkg_name);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;this.ioOrcTosMap.put(orc, tos);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;} catch (tcDataSetException localtcDataSetException) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;localtcDataSetException.printStackTrace();
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;}
+}<br>
+</font></pre>
+                        </div>
+                    </div> <!-- content-body close -->
+                </div> <!-- content close -->
+                <div id="footer">
+                    <div class="poweredby">&copy;2005 ZEROIN LLC</div>
+                </div>
+            </body>
+        </html>

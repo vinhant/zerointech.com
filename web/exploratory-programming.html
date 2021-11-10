@@ -1,0 +1,118 @@
+<html>
+    <head>
+        <meta name="Generator" content="Vim/7.0">
+        <meta http-equiv="content-type" content="text/html; charset=iso-8859-1">
+        <meta name="KEYWORDS" content="Sun Identity Manager IDM" />
+        <meta name="robots" content="index,follow" />
+        <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <title>Exploratory Programming of the Sun IDM API using Rhino</title>
+    </head>
+    <body>
+        <div id="header">
+            <h1>ZEROIN LLC</h1>
+        </div>
+        <ul id="nav-top">
+            <li id="n-mainpage">
+            <a href="index.html">Main Page</a></li>
+            <li id="n-Resume">
+            <a href="vinhant-resume.html">Resume</a></li>
+            <li id="n-articles">
+            <a href="idm-articles.html">IDM Articles</a>
+            <li id="n-Contact-Me">
+            <a href="vinhant-contact.html">Contact Me</a></li>
+        </ul>
+        <div id="content">
+            <div id="content-body">
+                <div id="articleBody">
+                    <div id="articleContent">
+                        <h1>Exploratory Programming of the Sun IDM API using Rhino</h1>
+Sun IDM comes with a JavaScript interpreter (Rhino) that can be invoked from the command-line. This gives developers an easy way to explore the large number of classes that comprised the product.
+<p>
+Let's say for example that you need the approvers of a role object in order to display them on a form. (The role view provides this information, but let's ignore this for the purpose of this example.) The role javadoc mentions two methods to get the approvers, getApproverRefs() and getApprovers(). Unfortunately they are not described clearly, and the difference between the two is not clear either.
+<p>
+In order to understand what these methods do and what they return, you can use the interpreter to invoke each one directly.
+<p>
+First start the interpreter with the 'lh.bat js' command:
+<pre>
+lh.bat js
+</pre>
+
+You will be greeted with the javascript prompt "js>"
+<p>
+Then the first thing to do is to login to the application server. Copy-paste the following code into the shell interpreter.
+<pre>
+// Java packages are prepended with the word 'Packages'
+// and are imported using the 'importPackage' function
+importPackage(Packages.com.waveset.util);
+importPackage(Packages.com.waveset.object);
+importPackage(Packages.com.waveset.security.authn);
+importPackage(Packages.com.waveset.session);
+importPackage(Packages.com.waveset.ui);
+importPackage(Packages.java.util);
+ 
+// Use arguments[0] and arguments[1] if you want to pass credentials 
+// from the command line
+// Here we just use the built-in account "configurator"
+var epass = new EncryptedData("configurator");
+var session = SessionFactory.getSession("configurator", epass);
+ 
+print("Waveset session established");
+</pre>
+
+Alternatively save the above code to a text file called "idm-init.js" and load the file from the interpreter.
+<pre>
+js> load("idm-init.js")
+Waveset session established
+</pre>
+
+Once a session has been established, objects can be loaded from the repository. Enter this line at the prompt to get the role object named "testrole3"
+<pre>
+js> var roleObject = session.getObject("Role", "testrole3");
+</pre>
+
+Enter the variable name at the prompt to cause the interpreter to invoke the object's 'toString' method.
+<pre>
+js> roleObject
+Role:testrole3
+</pre>
+
+Use a 'for' loop to print out all of the object's method and fields.
+<pre>
+js> for (i in roleObject) { print(i) }
+</pre>
+
+Enter a method's name to invoke it. Let's call getApproverRefs().
+<pre>
+js> var approvers1 = roleObject.getApproverRefs();
+js> approvers1
+[User:role1approver(id=#ID#1CC1759638D9AF96:182C132:10F3E8040B5:-7FBE), User:role2approver(id=#ID#1CC1759638D9AF96:182C132:10F3E8040B5:-7FB8)]
+js> approvers1.get(0).getClass();
+class com.waveset.object.ObjectRef
+</pre>
+
+Now let's check out getApprovers().
+<pre>
+js> var approvers2 = roleObject.getApprovers();
+js> approvers2
+[Lcom.waveset.object.WSUser;@d3c69c
+js> approvers2[0].getClass()
+class com.waveset.object.WSUser
+</pre>
+
+So getApproverRefs() returns a list of ObjectRef objects, while getApprover() returns an array of WSUser objects.
+<p>
+In summary the Sun IDM JavaScript interpreter can be used to explore the product's vast API. This article used the role class and its getApprovers() and getApproverRefs() methods as an example for exploratory programming. Other applications include automated testing and administrative scripts.
+
+                        <p>
+                        Vinh-An Trinh<br>
+                        Originally posted in the Sun IDM forum 03/17/2007<br>
+                        <a href="http://forum.java.sun.com/thread.jspa?threadID=5149685&messageID=9560220#9560220">http://forum.java.sun.com/thread.jspa?threadID=5149685&messageID=9560220#9560220</a>
+                    </div>
+                </div> <!-- content-body close -->
+            </div> <!-- content close -->
+            <div id="footer">
+                <div class="poweredby">&copy;2007 ZEROIN LLC</div>
+            </div>
+        </body>
+    </html>

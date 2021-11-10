@@ -1,0 +1,83 @@
+<html>
+    <head>
+        <meta name="Generator" content="Vim/7.0">
+        <meta http-equiv="content-type" content="text/html; charset=iso-8859-1">
+        <meta name="KEYWORDS" content="Oracle Xellerate Identity Management" />
+        <meta name="robots" content="index,follow" />
+        <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <title>Setup Eclipse to Compile and Run OIM Custom Clients</title>
+    </head>
+    <body>
+        <div id="header">
+            <h1>ZEROIN LLC</h1>
+        </div>
+        <ul id="nav-top">
+            <li id="n-mainpage">
+            <a href="index.html">Main Page</a></li>
+            <li id="n-Resume">
+            <a href="vinhant-resume.html">Resume</a></li>
+            <li id="n-articles">
+            <a href="idm-articles.html">IDM Articles</a>
+            <li id="n-Contact-Me">
+            <a href="vinhant-contact.html">Contact Me</a></li>
+        </ul>
+        <div id="content">
+            <div id="content-body">
+                <div id="articleBody">
+                    <div id="articleContent">
+                        <h1>Setup Eclipse to Compile and Run OIM Custom Clients</h1>
+Required Software
+                        <ol>
+                            <li>OIM Design Console.  Its "lib", "ext", and "config" folders are required to compile and run a custom client.
+
+                            <li>A custom client project setup in Eclipse.  Click here if you need a sample custom client.
+
+                        </ol>
+                        <h2>Compile Settings</h2>
+
+                        In order to compile a custom client the Design Console's 'lib' jar files need to be added to the build path.<p>
+                        <ol>
+                            <li>First add a user library to Eclipse.<p>
+                            Select menu item Window -> Preferences, then type in "user libraries" in the filter text.<p>
+                            Click 'New' button, enter a library name (example 'oim-lib'), click 'Add Jars' button, and add all jars from the Design Console "lib" folder.<p>
+                            Click OK to save and close Eclipse preferences dialog.<p>
+
+                            <li>Second add the user library to the build path<p>
+                            Select menu item Project -> Properties, type in "java build path" in the filter text.<p>
+                            Click "libraries" tab.  Click 'Add Library' button.  Wizard will show up.  Select 'User Library' and click next.  Select 'oim-lib' and click 
+                            Finish.<p>
+                            Click OK to save and close project properties dialog.
+                        </ol>
+                        Eclipse should now be able to compile the project. 
+
+                        <h2>Run and Debug Settings</h2>
+
+                        In order to run and debug the custom client the Design Console's 'ext' folder needs to be added to classpath.  Then the login configuration needs to be set.<p>
+
+                        If not already done so go in 'Run' -> 'Debug...' and add a new debug configuration of type 'Java Application'.<p>
+
+                        From debug configuration dialog click on tab 'Classpath', click on 'User Entries', click on 'Add External Jars', and add all jars from the Design 
+                        Console "ext" folder.<p>
+
+                        Then click on tab 'Arguments', and add this VM argument : 
+                        <code>
+                            -Djava.security.auth.login.config="design-console-dir\Config\auth.conf"
+                        </code>
+                        <p>
+                        Where 'design-console-dir' is the absolute path to the OIM Design Console.<p>
+
+                        Eclipse is now configured to run and debug the OIM custom client.<p>
+
+                        <p>
+                        Vinh-An Trinh<br>
+                        Created 04/10/2007; Last Update 04/10/2007
+
+                    </div>
+                </div> <!-- content-body close -->
+            </div> <!-- content close -->
+            <div id="footer">
+                <div class="poweredby">&copy;2005 ZEROIN LLC</div>
+            </div>
+        </body>
+    </html>

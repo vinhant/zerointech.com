@@ -1,0 +1,248 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+	"http://www.w3.org/TR/html4/strict.dtd">
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<meta name="KEYWORDS" content="Oracle Xellerate Identity Management Task Scheduler Command-line tool" />
+		<meta name="robots" content="index,follow" />
+		<link rel="shortcut icon" href="/favicon.ico" />
+		<title>Xellerate Run Task Scheduler - ZeroIn LLC</title>
+		<link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+	</head>
+	<body>
+		<div id="header">
+			<h1>ZEROIN LLC</h1>
+		</div>
+		<ul id="nav-top">
+			<li id="n-mainpage">
+				<a href="index.html">Main Page</a></li>
+			<li id="n-Resume">
+				<a href="vinhant-resume.html">Resume</a></li>
+			<li id="n-articles">
+				<a href="idm-articles.html">IDM Articles</a>
+			<li id="n-Contact-Me">
+				<a href="vinhant-contact.html">Contact Me</a></li>
+		</ul>
+		<div id="content">
+			<div id="content-body">
+				<div id="articleBody">
+					<div id="articleContent">
+						<h1>Run an Oracle Xellerate Task Scheduler from the Command-Line</h1>
+							In Oracle Xellerate, identity reconciliation is done with Scheduler Tasks --Java classes
+							launched at a certain time to start the reconciliation.
+							<p>Unfortunately there is no tool to launch a Scheduler Task from the command-line, which is helpful in development.</p>
+							<p>So I wrote my own tool.</p>
+							<h3>Running</h3>
+							This tool runs on the Xellerate Server.  The Xellerate Server directory, for example <code>C:\oracle\xellerate</code>, is denoted by <code>${xl.home}</code> below.
+							<p>First create a directory "RunSchedulerTask" and then copy these files (source code below)</p>
+							<ul>
+							<li>"RunSchedulerTask.java"</li>
+							<li>"build.xml"</li>
+							</ul>
+							<p>To run, simply open a command-line prompt, change directory to RunSchedulerTask, and run ant:
+							<code><br>${xl.home}\ant\bin\ant.bat run -Dxl.home="${xl.home}" -Dargs="&lt;classname&gt; &lt;username&gt; &lt;password&gt; &lt;task-file.properties&gt;"</br></code>
+							</p>Where
+							<ul>
+							<li>classname is the full classname of the scheduler task to run</li>
+							<li>username is the Xellerate login (eg xelsysadm)</li>
+							<li>password is the login password (eg xelsysadm)</li>
+							<li>task-file.properties is the properties file containing the Scheduler Task attributes</li>
+							</ul>
+							<h4>Example</h4>
+							To run the AD Group Lookup reconciliation:
+							<p>Create a Task attributes file "ADGroupLookupRecon.properties" and add the following lines:
+							<code>
+							<br>Server=MyActiveDirectoryServerItResourceInstance</br>
+							<br>LookupCodeName=Lookup.ADReconliation.GroupLookup</br>
+							</code>
+							</p>
+							<p>Run Ant
+							<br><code>${xl.home}\ant\bin\ant.bat run -Dxl.home="${xl.home}" -Dargs="com.thortech.xl.schedule.tasks.ADGroupLookupReconTask xelsysadm xelsysadm ADGroupLookupRecon.properties"</code>
+							</p>
+							<h3>RunSchedulerTask.java</h3>
+							<pre>
+import Thor.API.Security.LoginHandler.LoginSession;
+import Thor.API.Security.XLClientSecurityAssociation;
+import Thor.API.tcUtilityFactory;
+import com.thortech.util.logging.Logger;
+import com.thortech.xl.client.dataobj.tcDataBaseClient;
+import com.thortech.xl.scheduler.tasks.SchedulerBaseTask;
+import com.thortech.xl.util.config.ConfigurationClient;
+import java.io.*;
+import java.util.Properties;
+
+/*
+ * RunSchedulerTask
+ * 
+ * Runs an Xellerate Scheduler task from the command-line.
+ * 
+ * Tested with Xellerate 9.0
+ * 
+ * @author Vinh-An Trinh (vinhant@zerointech.com)
+ */
+public class RunSchedulerTask
+{
+    public static void help()
+    {
+        System.out.println("");
+        System.out.println("Runs an Xellerate Scheduler task " +
+            "from the command-line.");
+        System.out.println("");
+        System.out.println("Usage:");
+        System.out.println("RunSchedulerTask " +
+            "[classname] [username] [password] [task-attributes.properties]");
+        System.out.println("  classname : Full classname of " +
+            "the scheduler task class");
+        System.out.println("  username : Xellerate login name");
+        System.out.println("  password : Xellerate login password");
+        System.out.println("  task-attributes.properties: " +
+            "properties file path, contains key-value pairs of task attributes.");
+    }
+
+    /*
+     * arg[0] : recon class name.  Class must derived from SchedulerBaseTask
+     * arg[1] : username (eg xelsysadm)
+     * arg[2] : password (eg xelsysadm)
+     * arg[3] : task attributes file (file contains key=value on each line)
+     */
+    public static void main(String args[])
+    {
+        if (args.length < 3)
+        {
+            help();
+            return;
+        }
+
+        try
+        {
+            // Create a new instance of the scheduler task
+            SchedulerBaseTask task = (SchedulerBaseTask) Class.forName(
+                args[0]).newInstance();
+
+            // Login to Xellerate			
+            Properties jndi = ConfigurationClient.getComplexSettingByPath(
+                "Discovery.CoreServer").getAllSettings();
+            tcUtilityFactory tcutilityfactory = new tcUtilityFactory(
+                jndi, args[1], args[2]);
+
+            task.setUtilityFactory(tcutilityfactory);
+
+            // Load the task scheduler attributes file
+            Properties attributes = new Properties();
+            if (args.length > 3)
+            {
+                attributes.load( new FileInputStream( new File(args[3]) ));
+                task.setTaskAttributeMap(attributes);
+            }
+
+            // Get a database handle
+            LoginSession loginsession = tcutilityfactory.getLoginSession();
+            XLClientSecurityAssociation.setGlobalLoginSession(loginsession);
+
+            tcDataBaseClient clientDB = new tcDataBaseClient();
+            String s = clientDB.getDatabaseName();
+			
+            task.setDataBase(clientDB);
+
+            // Run
+            task.runAsThread();
+
+            // Print Success/Failure
+            boolean success = task.isSuccess();
+            if (!success)
+            {
+                System.out.println("TASK FAILED");
+
+                String message = task.getStatus();
+                System.out.println("Status: " + message);
+
+                Exception ex = task.getResult();
+                if (ex != null)
+                {
+                    System.out.println("Exception: " + ex.getMessage());
+                }
+            }
+        }
+        catch (Exception ex)
+        {	
+            ex.printStackTrace();
+        }
+		
+        // Not sure why we need to manually exit, but without this java just hangs
+        System.exit(0);
+    }
+}
+							</pre>
+							<h3>build.xml</h3>
+<pre>
+&lt;!-- 
+xl.home property must be set to the xellerate home directory, example:
+ant -Dxl.home="C:\xellerate9\xellerate" compile
+--&gt;
+&lt;project name="IDM" default="compile" basedir="."&gt;
+    &lt;property name="xl.home"    value="C:\xellerate9\xellerate"/&gt;
+
+    &lt;path id="classpath.server.xellerate"&gt;
+        &lt;pathelement location="${xl.home}/lib/xlAdapterUtilities.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlAPI.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlAuthentication.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlCrypto.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlDataObjects.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlDataObjectBeans.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlScheduler.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlLogger.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlUtils.jar"/&gt;
+        &lt;pathelement location="${xl.home}/lib/xlVO.jar"/&gt;
+        &lt;pathelement location="${xl.home}/ext/log4j-1.2.8.jar"/&gt;
+    &lt;/path&gt;
+    
+    &lt;path id="classpath.client.xellerate"&gt;
+        &lt;fileset dir="${xl.home}/lib"&gt;
+            &lt;include name="**/*.jar"/&gt;
+        &lt;/fileset&gt;
+        &lt;fileset dir="${xl.home}/ext"&gt;
+            &lt;include name="**/*.jar"/&gt;
+        &lt;/fileset&gt;
+        &lt;fileset dir="${xl.home}/ScheduleTask"&gt;
+            &lt;include name="**/*.jar"/&gt;
+        &lt;/fileset&gt;
+        &lt;fileset dir="${xl.home}/JavaTasks"&gt;
+            &lt;include name="**/*.jar"/&gt;
+        &lt;/fileset&gt;
+    &lt;/path&gt;
+
+    &lt;target name="init"&gt;
+        &lt;copy todir="config"&gt;&lt;fileset dir="${xl.home}/config"/&gt;&lt;/copy&gt;
+    &lt;/target&gt;
+
+    &lt;target name="compile"&gt;
+        &lt;javac srcdir="." destdir="." debug="on"&gt;
+            &lt;classpath&gt;
+                &lt;path refid="classpath.server.xellerate"/&gt;
+            &lt;/classpath&gt;
+        &lt;/javac&gt;
+    &lt;/target&gt;
+
+    &lt;target name="run" depends="init,compile"&gt;
+        &lt;java classname="RunSchedulerTask" fork="true"&gt;
+            &lt;classpath&gt;
+                &lt;path location="."/&gt;
+                &lt;path refid="classpath.client.xellerate"/&gt;
+            &lt;/classpath&gt;
+
+            &lt;sysproperty key="java.security.auth.login.config" 
+                value="${xl.home}/config/auth.conf"/&gt;
+            &lt;sysproperty key="XL.RedirectSysOutErrToFile" value="false"/&gt;
+            &lt;arg line="${args}" /&gt;
+        &lt;/java&gt;
+    &lt;/target&gt;
+&lt;/project&gt;
+</pre>
+					</div>
+				</div> <!-- content-body close -->
+			</div> <!-- content close -->
+			<div id="footer">
+				<div class="poweredby">&copy;2005 ZEROIN LLC</div>
+			</div>
+	</body>
+</html>

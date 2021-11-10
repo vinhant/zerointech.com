@@ -1,0 +1,189 @@
+<html>
+    <head>
+        <title>Dictionary check on password and substrings of the password</title>
+        <meta name="Generator" content="Vim/7.0">
+        <meta http-equiv="content-type" content="text/html; charset=iso-8859-1">
+        <meta name="KEYWORDS" content="Sun Identity Manager" />
+        <meta name="robots" content="index,follow" />
+        <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+    </head>
+    <body>
+        <div id="header">
+            <h1>ZEROIN LLC</h1>
+        </div>
+        <ul id="nav-top">
+            <li id="n-mainpage">
+            <a href="index.html">Main Page</a></li>
+            <li id="n-Resume">
+            <a href="vinhant-resume.html">Resume</a></li>
+            <li id="n-articles">
+            <a href="idm-articles.html">IDM Articles</a>
+            <li id="n-Contact-Me">
+            <a href="vinhant-contact.html">Contact Me</a></li>
+        </ul>
+        <div id="content">
+            <div id="content-body">
+                <div id="articleBody">
+                    <div id="articleContent">
+                        <h1>Dictionary check on password and substrings of the password</h1>
+As of IDM 7.1 the product cannot check portion of a password against dictionary words.  It can only check the whole password.  So IDM can validate that "cat" or "CaT" is an invalid password (it will return an error saying "Must not contain the word cat".  However passwords such as "cat123" and "123cat" will go undetected.
+<p>
+Read on for a solution to this limitation.
+<p>
+Since we cannot rely on IDM's dictionary check we must do our own check.  We do this by implementing a Java class that checks the password against a local dictionary file.  The Java class is included at the end.
+<p>
+The class works like this:
+<p>
+It sub-classes "StringQualityPolicy" which is IDM's class that performs the limited dictionary check.
+<p>
+The method "check()" is the entry point and overrides the parent class implementation.  The first thing "check()" does is call another method "findDictionaryWord()" to validate the password.  If the validation fails it throws a PasswordPolicy exception, but if it succeeds the base class is called to perform the check.
+<p>
+"findDictionaryWord()" works by comparing every word in the dictionary against the password.  The dictionary resides in a text file, one word per line.  Every word has to be checked to make sure that "123cat" and "cat123" are invalid passwords.
+<p>
+Some may think comparing every word is slow but in our environment this is not an issue.
+<p>
+To deploy:
+<p>
+<ul>
+    <li>First go in the admin console and disable dictionary check from the password policy.</li>
+
+    <li>Export your password policy to an XML file.</li>
+
+    <li>Edit the XML file and replace the built-in class StringQualityPolicy with your custom class.  Example:
+    <p>
+    Original file:<br>
+    ...<br>
+    &lt;Policy name='ACME Password Policy' class='com.waveset.policy.StringQualityPolicy'&gt;<br>
+    ...<br>
+    <p>
+    New file:<br>
+    ...<br>
+    &lt;Policy name='ACME Password Policy' class='com.acme.idm.StringQualityPolicy'&gt;<br>
+    ...<br>
+</li>
+    <li>Add or update the description of the password policy to include wording such as:
+
+"ACME password policy that MUST be edited by hand.  Do not edit through the admin console."
+
+The reason for this is that when the policy is updated through the admin console, the custom class will be cleared and IDM will put back the default class.  So always update the policy through download/upload of the XML.
+</li>
+<li>Upload the XML</li>
+
+    <li>Package "dictionary.txt" and "StringQualityPolicy.class" in the WAR file in the folder "WEB-INF/classes/com/acme/idm" and deploy to your application server.
+
+    "dictionary.txt" is included in the "sample" directory of Sun IDM.</li>
+</ul>
+
+<pre>
+/*
+ * StringQualityPolicy.java
+ *
+ * Created on March 5, 2008, 12:47 PM
+ *
+ * Work-around to Sun IDM default dictionary password check.  
+ * The default dictionary check only checks the whole word
+ * and a password like "cat123" will pass.
+ *
+ * Do our own dictionary check.  The dictionary is stored in a text file, 
+ * and new passwords are checked against it.
+ *
+ */
+
+package com.acme.idm;
+
+import com.waveset.msgcat.Message;
+import com.waveset.msgcat.Severity;
+import java.util.Map;
+import java.util.List;
+import java.io.*;
+import com.waveset.object.*;
+import com.waveset.util.EncryptedData;
+import com.waveset.exception.PolicyViolation;
+import com.waveset.util.WavesetException;
+import com.sun.idm.logging.trace.*;
+
+public class StringQualityPolicy extends com.waveset.policy.StringQualityPolicy {
+    
+    private static final Trace logger = TraceManager.getTrace(
+        "com.acme.idm.StringQualityPolicy");
+    
+    public StringQualityPolicy() {
+    }
+    
+    public void check(Policy policy, Object value, Map map, List pwdhistory, String owner)
+    throws PolicyViolation, WavesetException {
+        // Do our own dictionary check before passing it in to the built-in check
+        String newPassword = null;
+        if(value instanceof String) {
+            newPassword = (String)value;
+        } else if(value instanceof EncryptedData) {
+            newPassword = ((EncryptedData)value).decryptToString();
+        }
+        if (newPassword != null) {
+            String word = findDictionaryWord(newPassword);
+            if (word != null) {
+                Message msg = new Message("PL_STRING_WORD", word);
+                throw new PolicyViolation(msg);
+            }
+        }
+        super.check(policy, value, map, pwdhistory, owner);
+    }
+    
+    private String findDictionaryWord(String newPassword)
+    throws WavesetException {
+        logger.entry1("findDictionaryWord", newPassword);
+        
+        InputStream inputStream = getClass().getResourceAsStream("dictionary.txt");
+        if (inputStream == null) {
+            throw new WavesetException("dictionary.txt not found", Severity.ERROR);
+        }
+
+        // Convert the password to lowercase so can ignore case 
+        // (assumes that dictionary is all lowercase too)
+        String newPasswordLower = newPassword.toLowerCase();
+        
+        BufferedReader bufferedReader = null;
+        InputStreamReader inputStreamReader = null;
+        try {
+            
+            inputStreamReader = new InputStreamReader(inputStream);
+            bufferedReader = new BufferedReader(inputStreamReader);
+            String word;
+            
+            while ((word = bufferedReader.readLine()) != null) {
+                // System.out.println(word);
+                if (newPasswordLower.indexOf(word) > -1) {
+                    logger.exit1("findDictionaryWord", word);
+                    return word;
+                }
+            }
+        } catch (IOException ex) {
+            throw new WavesetException(ex);
+        } finally {
+            try {
+                if (bufferedReader != null)
+                    bufferedReader.close();
+                if (inputStreamReader != null)
+                    inputStreamReader.close();
+                inputStream.close();
+            } catch (IOException ioex) { }
+        }
+        
+        logger.exit1("findDictionaryWord", null);
+        return null;
+    }
+    
+}
+</pre>
+
+Last updated: 2008-05-16
+
+                        </div>
+                    </div> <!-- content-body close -->
+                </div> <!-- content close -->
+                <div id="footer">
+                    <div class="poweredby">&copy;2005 ZEROIN LLC</div>
+                </div>
+            </body>
+        </html>

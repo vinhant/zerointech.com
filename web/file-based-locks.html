@@ -1,0 +1,204 @@
+<html>
+    <head>
+        <meta name="Generator" content="Vim/7.0">
+        <meta http-equiv="content-type" content="text/html; charset=iso-8859-1">
+        <meta name="KEYWORDS" content="Sun Identity Manager IDM" />
+        <meta name="robots" content="index,follow" />
+        <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <title>Synchronizing objects using file-based locks</title>
+    </head>
+    <body>
+        <div id="header">
+            <h1>ZEROIN LLC</h1>
+        </div>
+        <ul id="nav-top">
+            <li id="n-mainpage">
+            <a href="index.html">Main Page</a></li>
+            <li id="n-Resume">
+            <a href="vinhant-resume.html">Resume</a></li>
+            <li id="n-articles">
+            <a href="idm-articles.html">IDM Articles</a>
+            <li id="n-Contact-Me">
+            <a href="vinhant-contact.html">Contact Me</a></li>
+        </ul>
+        <div id="content">
+            <div id="content-body">
+                <div id="articleBody">
+                    <div id="articleContent">
+                        <h1>Synchronizing objects using file-based locks</h1>
+                        <h2>The problem</h2>
+IDM does not provide a way to synchronize objects if the threads are running under the same context. API call checkoutObject() or checkoutView() will not return "object lock by another user" if it's the same user making the second call. Test this by starting two instance of Internet Explorer and log in to IDM under the same user, say 'configurator'. Then try editing user 'john.smith' in both browsers, you will not get any error. But if you log in as different user and try this again, you will get an error like "object john.smith locked by user configurator".
+<p>
+In some instances there is a need to lock the object even if the two threads are running under the same context. For example two workflows that need to update the same object. That is actually addressed in the Sun IDM FAQ ("How to handle concurrent updates to a user object within a workflow?") and the FAQ proposes that one workflow checks the presence of other workflows, and take other extra measures. However the FAQ's answer is a little bit hard to understand and does not provide an example implementation.
+<p>
+This article shows another approach : creating our own locking library.
+<p>
+
+<h2>Directory-based synchronization library</h2>
+
+The solution is to create our own synchronization library using directories as locks. The reason directories are used is that locks need to be persistent and OS independent.
+<p>
+A reference implementation using Java and Xpress is show below.
+<p>
+Note 1 : the reason why there is a mix of Java and Xpress is that at first I tried writing the whole thing in Xpress using embedded JavaScript to create and delete directories. However JavaScript had trouble deleting directories so I replaced it with Java.
+<p>
+Note 2 : the library does not return any error if the lock (directory) could not be acquired (created) because in my deployment if that scenario happens it means another workflow did not clean up properly, in that case just get the lock.
+<p>
+Note 3 : creating file and directories might require tweaking the Java security permissions. It might be a good idea to put the directories in the application server temporary folder
+<p>
+<h3>Java class</h3>
+<pre>
+import com.sun.idm.logging.trace.Trace;
+import com.sun.idm.logging.trace.TraceManager;
+import java.io.File;
+import java.io.IOException;
+ 
+/**
+ * FileIO.java
+ *
+ * Some file operations that are just easier to do in Java than JavaScript
+ * (also, JavaScript has trouble with deleting directories)
+ *  
+ * @author vinhant@zerointech.com
+ *
+ */
+public class FileIO
+{
+    public static boolean mkdirs(String path)
+    {
+        TRACE.entry1("mkdirs", path);
+        boolean success = false;
+        if (path != null || path.length() > 0)
+        {
+            File file = new File(path);
+            success = file.mkdirs();
+        }
+        TRACE.exit1("mkdirs", success);
+        return success;
+    }
+ 
+    public static boolean delete(String filename)
+    {
+        TRACE.entry1("delete", filename);
+        boolean success = false;
+        if (filename != null || filename.length() > 0)
+        {
+            File file = new File(filename);
+            success = file.delete();
+        }
+        TRACE.exit1("delete", success);
+        return success;
+    }
+ 
+    public static String removeNonAlphaNum(String input)
+    {
+        TRACE.entry1("removeNonAlphaNum", input);
+        String output = null;
+        if (input != null || input.length() > 0)
+        {
+            StringBuffer sb = new StringBuffer();
+            for (int i = 0; i < input.length(); i++)
+            {
+                char c = input.charAt(i);
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                        || (c >= '0' && c <= '9'))
+                {
+                    sb.append(c);
+                }
+            }
+            output = sb.toString();
+        }
+        TRACE.exit1("removeNonAlphaNum", output);
+        return output;
+    }
+ 
+    private static final Trace TRACE = TraceManager.getTrace("FileIO");
+}
+</pre>
+
+<h3>XPRESS rule library</h3>
+<pre>
+&lt;?xml version='1.0' encoding='UTF-8'?&gt;
+&lt;!--
+RuleLibrary-Lock.xml
+
+Author: vinhant@zerointech.com
+
+--&gt;
+&lt;!DOCTYPE Configuration PUBLIC 'waveset.dtd' 'waveset.dtd'&gt;
+&lt;Configuration authType='EndUserLibrary' name='Lock'&gt;
+    &lt;Extension&gt;
+        &lt;Library&gt;
+            &lt;Rule authType='EndUserRule' name='AcquireLock'&gt;
+                &lt;RuleArgument name=&quot;lock&quot;/&gt;
+                &lt;RunAsUser&gt;
+                    &lt;ObjectRef type='User' id='#ID#Configurator' name='Configurator'/&gt;
+                &lt;/RunAsUser&gt;
+                &lt;Description&gt;&lt;/Description&gt;
+                &lt;block&gt;
+                    &lt;defvar name='counter'&gt;
+                        &lt;i&gt;0&lt;/i&gt;
+                    &lt;/defvar&gt;
+                    &lt;defvar name='max'&gt;
+                        &lt;i&gt;120&lt;/i&gt;
+                    &lt;/defvar&gt;
+                    &lt;while&gt;
+                        &lt;isFalse&gt;
+                            &lt;invoke name='mkdirs' class='FileIO'&gt;
+                                &lt;ref&gt;lock&lt;/ref&gt;
+                            &lt;/invoke&gt;
+                        &lt;/isFalse&gt;
+                        &lt;invoke class='java.lang.Thread' name='sleep'&gt;
+                            &lt;new class='java.lang.Long'&gt;
+                                &lt;s&gt;200&lt;/s&gt;
+                            &lt;/new&gt;
+                        &lt;/invoke&gt;
+                        &lt;set name='counter'&gt;
+                            &lt;add&gt;
+                                &lt;ref&gt;counter&lt;/ref&gt;
+                                &lt;i&gt;1&lt;/i&gt;
+                            &lt;/add&gt;
+                        &lt;/set&gt;
+                        &lt;cond&gt;
+                            &lt;eq&gt;
+                                &lt;ref&gt;counter&lt;/ref&gt;
+                                &lt;ref&gt;max&lt;/ref&gt;
+                            &lt;/eq&gt;
+                            &lt;break/&gt;
+                        &lt;/cond&gt;
+                    &lt;/while&gt;
+                &lt;/block&gt;
+            &lt;/Rule&gt;
+
+            &lt;Rule authType='EndUserRule' name='ReleaseLock'&gt;
+                &lt;RuleArgument name=&quot;lock&quot;/&gt;
+                &lt;RunAsUser&gt;
+                    &lt;ObjectRef type='User' id='#ID#Configurator' name='Configurator'/&gt;
+                &lt;/RunAsUser&gt;
+                &lt;Description&gt;&lt;/Description&gt;
+                &lt;block&gt;
+                    &lt;invoke name='delete' class='FileIO'&gt;
+                        &lt;ref&gt;lock&lt;/ref&gt;
+                    &lt;/invoke&gt;
+                &lt;/block&gt;
+            &lt;/Rule&gt;
+        &lt;/Library&gt;
+    &lt;/Extension&gt;
+    &lt;MemberObjectGroups&gt;
+        &lt;ObjectRef type='ObjectGroup' id='#ID#All' name='All'/&gt;
+    &lt;/MemberObjectGroups&gt;
+&lt;/Configuration&gt;
+</pre>
+                        <p>
+                        Vinh-An Trinh<br>
+                        Originally posted in the Sun IDM forum 12/29/2006<br>
+                        <a href="http://forum.java.sun.com/thread.jspa?threadID=5120027&messageID=9417040#9417040">http://forum.java.sun.com/thread.jspa?threadID=5120027&messageID=9417040#9417040</a>
+                    </div>
+                </div> <!-- content-body close -->
+            </div> <!-- content close -->
+            <div id="footer">
+                <div class="poweredby">&copy;2007 ZEROIN LLC</div>
+            </div>
+        </body>
+    </html>

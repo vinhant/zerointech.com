@@ -1,0 +1,104 @@
+<html>
+    <head>
+        <meta name="Generator" content="Vim/7.0">
+        <meta http-equiv="content-type" content="text/html; charset=iso-8859-1">
+        <meta name="KEYWORDS" content="Oracle Xellerate Identity Management" />
+        <meta name="robots" content="index,follow" />
+        <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <title>Workaround for Lack of Attribute-level Privilege - ZeroIn LLC</title>
+    </head>
+    <body>
+        <div id="header">
+            <h1>ZEROIN LLC</h1>
+        </div>
+        <ul id="nav-top">
+            <li id="n-mainpage">
+            <a href="index.html">Main Page</a></li>
+            <li id="n-Resume">
+            <a href="vinhant-resume.html">Resume</a></li>
+            <li id="n-articles">
+            <a href="idm-articles.html">IDM Articles</a>
+            <li id="n-Contact-Me">
+            <a href="vinhant-contact.html">Contact Me</a></li>
+        </ul>
+        <div id="content">
+            <div id="content-body">
+                <div id="articleBody">
+                    <div id="articleContent">
+                        <h1>Workaround for Lack of Attribute-level Privilege</h1>
+
+                        The permission model in Xellerate 9 uses an "all or nothing" approach when it comes to resource forms.  A user is either able 
+                        to change any attribute on a form, or he is not able to change any of them.
+                        <p>
+                        This is a serious limitation for clients who want the Help Desk group to be able to reset AD passwords but not update any 
+                        other attributes (first name, last name, account locked...)
+                        <p>
+                        One possible workaround is to modify the Struts-based web application and code the functionality in Java Server Pages.  However the 
+                        downside of this approach is the steep learning curve required to modify a Struts-based application.  It also makes the 
+                        product trickier to upgrade.
+                        <p>
+                        Another workaround is to by-pass the AD user form and update the AD server directly, using a process task attached to the 
+                        Xellerate user process.  This approach is not perfect because it moves the "all or nothing" permission from the AD user form to 
+                        the Xellerate user form.  Help Desk Group will be able to change the Xellerate user's first name and last name in addition to the AD 
+                        password.  That's why this is a workaround (http://en.wikipedia.org/wiki/Workaround) and not a 
+                        solution.
+                        <p>
+                        Here are the main steps to implement this approach:
+                        <p>
+                        <ol>
+                            <li>Create Java class and Adapter
+
+                            <p>If necessary create a Java class that will do the attribute provisioning on the target system.  For example create a Java class 
+                            that will reset a user's password on AD.
+
+                            Then create an Adapter in Adapter Factory that utilizes that class or that directly provisions the attribute.
+
+
+                            <li>Add User-Defined Field
+
+                            <p>Add a user-defined field (a custom field to the Xellerate user form), for example "AD Password".  It might also make 
+                            sense to re-use one of the built-in fields if the privilege applies to many target systems.  For example if the Help Desk Group 
+                            has the privilege to reset password in many target system (AD, Portal, database, etc.) then it would make sense to re-use the 
+                            built-in "Password" field instead of creating a new user-defined field for every target system.
+
+
+                            <li>Add Process Task to Xellerate User
+
+                            <p>Lookup the process "Xellerate User".  Add a process task named "Change Password" (important: the name of the process task 
+                            matters!  If the name is incorrect the process task will not be called.  In general the task name should be "Change 
+                            [fieldname]").
+
+                            <p>Map the Adapter created in step 1 to the Process Task.
+
+
+                            <li>Create Group
+
+                            <p>Create a group that will have permission to provision the attribute e.g. Help Desk Group.
+
+
+                            <li>Add Group Permissions
+
+                            <p>If the class or Adapter created in step 1 uses the Xellerate API to access an Xellerate entity, then permission must be granted 
+                            to read that entity.  More specifically the group must be granted read access because the class runs under the context of the group.
+                            For example if the class uses the Xellerate API to get the server's 
+                            address, port, and bind credentials, the class (i.e. the group) must be granted read 
+                            permission to the AD server resource instance.
+                        </ol>
+
+                        <p>In summary this approach provides a workaround, with some risks, to the "all or nothing" permission model that 
+                        Xellerate uses to update forms.
+
+                        <br>
+                        <br><p>Vinh-An Trinh
+                        <br>
+                        <br>
+                        <p>Created 10/17/2006; Last Updated 10/17/2006;
+                    </div>
+                </div> <!-- content-body close -->
+            </div> <!-- content close -->
+            <div id="footer">
+                <div class="poweredby">&copy;2005 ZEROIN LLC</div>
+            </div>
+        </body>
+    </html>
